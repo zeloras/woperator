@@ -6,6 +6,7 @@ services:
     platform: linux/x86_64
     volumes:
       - ./src:/app/src
+      - ./supervisor:/etc/supervisor/conf.d
     ports:
       - "8000:8000"
     privileged: true 

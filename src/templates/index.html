@@ -1,25 +1,282 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Remote Desktop</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Woperator - Desktop Stream</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
-        body { margin: 0; background: black; }
-        #screen {
-            width: 100vw;
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
             height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background-color: #2c2c2c;
+            padding: 10px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+
+        .stream-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #stream {
+            max-width: 100%;
+            max-height: 100%;
             object-fit: contain;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            border-radius: 4px;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(44, 44, 44, 0.9);
+            padding: 10px;
+            border-radius: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .control-btn {
+            background-color: #4a4a4a;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 14px;
+            min-width: 100px;
+        }
+
+        .control-btn:hover {
+            background-color: #666666;
+        }
+
+        .control-btn.active {
+            background-color: #007bff;
+        }
+
+        .status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(44, 44, 44, 0.9);
+            padding: 8px 16px;
+            border-radius: 15px;
+            font-size: 14px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #dc3545;
+        }
+
+        .status.connected::before {
+            background-color: #28a745;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px;
+            color: #ffffff;
+            text-align: center;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80% { content: '...'; }
         }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </head>
 <body>
-    <img id="screen" src="">
+    <div class="header">
+        <h1>Woperator Desktop Stream</h1>
+    </div>
+
+    <div class="stream-container">
+        <div id="loading" class="loading">Connecting to stream</div>
+        <img id="stream" src="/stream" alt="Desktop Stream" style="display: none;">
+    </div>
+
+    <div class="controls">
+        <button id="mouseBtn" class="control-btn active">Mouse Control</button>
+        <button id="keyboardBtn" class="control-btn active">Keyboard Control</button>
+        <button id="fullscreenBtn" class="control-btn">Fullscreen</button>
+        <button id="refreshBtn" class="control-btn">Refresh Stream</button>
+    </div>
+
+    <div id="status" class="status">Disconnected</div>
+
     <script>
         const socket = io();
-        const screen = document.getElementById('screen');
+        const stream = document.getElementById('stream');
+        const loading = document.getElementById('loading');
+        const mouseBtn = document.getElementById('mouseBtn');
+        const keyboardBtn = document.getElementById('keyboardBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const status = document.getElementById('status');
         
-        socket.on('screen', function(data) {
-            screen.src = 'data:image/jpeg;base64,' + data.data;
+        let mouseEnabled = true;
+        let keyboardEnabled = true;
+        let streamActive = false;
+
+        function startStream() {
+            stream.style.display = 'none';
+            loading.style.display = 'block';
+            stream.src = '/stream?' + new Date().getTime();
+        }
+
+        // Stream handling
+        stream.onload = () => {
+            loading.style.display = 'none';
+            stream.style.display = 'block';
+            streamActive = true;
+        };
+
+        stream.onerror = () => {
+            loading.textContent = 'Stream error, retrying';
+            streamActive = false;
+            setTimeout(startStream, 5000);
+        };
+
+        // Socket connection handling
+        socket.on('connect', () => {
+            status.textContent = 'Connected';
+            status.classList.add('connected');
+            if (!streamActive) {
+                startStream();
+            }
+        });
+
+        socket.on('disconnect', () => {
+            status.textContent = 'Disconnected';
+            status.classList.remove('connected');
+            streamActive = false;
+        });
+
+        // Mouse event handling
+        stream.addEventListener('mousemove', (e) => {
+            if (!mouseEnabled) return;
+            const rect = stream.getBoundingClientRect();
+            const scaleX = 1920 / rect.width;
+            const scaleY = 1080 / rect.height;
+            const x = Math.round((e.clientX - rect.left) * scaleX);
+            const y = Math.round((e.clientY - rect.top) * scaleY);
+            
+            socket.emit('input_event', {
+                type: 'mouse',
+                action: 'move',
+                x: x,
+                y: y
+            });
+        });
+
+        stream.addEventListener('mousedown', (e) => {
+            if (!mouseEnabled) return;
+            e.preventDefault();
+            socket.emit('input_event', {
+                type: 'mouse',
+                action: 'click',
+                button: e.button + 1
+            });
+        });
+
+        stream.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+
+        // Keyboard event handling
+        document.addEventListener('keydown', (e) => {
+            if (!keyboardEnabled) return;
+            if (e.target === document.body) {
+                e.preventDefault();
+                socket.emit('input_event', {
+                    type: 'keyboard',
+                    action: 'keydown',
+                    key: e.key,
+                    code: e.code,
+                    shift: e.shiftKey,
+                    ctrl: e.ctrlKey,
+                    alt: e.altKey,
+                    meta: e.metaKey
+                });
+            }
+        });
+
+        // Control button handling
+        mouseBtn.addEventListener('click', () => {
+            mouseEnabled = !mouseEnabled;
+            mouseBtn.classList.toggle('active');
+        });
+
+        keyboardBtn.addEventListener('click', () => {
+            keyboardEnabled = !keyboardEnabled;
+            keyboardBtn.classList.toggle('active');
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        refreshBtn.addEventListener('click', () => {
+            startStream();
+        });
+
+        // Initial stream start
+        startStream();
+
+        // Handle window resize
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (streamActive) {
+                    startStream();
+                }
+            }, 500);
         });
     </script>
 </body>

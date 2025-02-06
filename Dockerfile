@@ -4,41 +4,52 @@ FROM ubuntu:24.04
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Add Mozilla PPA for Firefox ESR
+# Add Mozilla PPA for Firefox
 RUN apt-get update && apt-get install -y software-properties-common && \
-    add-apt-repository ppa:mozillateam/ppa
+    add-apt-repository ppa:mozillateam/ppa && \
+    echo 'Package: *' > /etc/apt/preferences.d/mozilla-firefox && \
+    echo 'Pin: release o=LP-PPA-mozillateam' >> /etc/apt/preferences.d/mozilla-firefox && \
+    echo 'Pin-Priority: 1001' >> /etc/apt/preferences.d/mozilla-firefox
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
+    supervisor \
     xvfb \
     fluxbox \
-    firefox-esr \
+    firefox \
     python3-full \
     python3-pip \
-    python3-dev \
+    xdotool \
+    dbus-x11 \
+    pulseaudio \
+    ffmpeg \
+    x11-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up working directory
+# Configure PulseAudio
+RUN mkdir -p /etc/pulse && \
+    echo "default-server = unix:/var/run/pulse/native" > /etc/pulse/client.conf && \
+    echo "autospawn = no" >> /etc/pulse/client.conf && \
+    echo "daemon-binary = /bin/true" >> /etc/pulse/client.conf && \
+    echo "enable-shm = yes" >> /etc/pulse/client.conf && \
+    echo "load-module module-native-protocol-unix auth-anonymous=1" > /etc/pulse/system.pa && \
+    echo "load-module module-native-protocol-tcp auth-anonymous=1" >> /etc/pulse/system.pa && \
+    echo "load-module module-always-sink" >> /etc/pulse/system.pa && \
+    echo "load-module module-null-sink" >> /etc/pulse/system.pa && \
+    echo "load-module module-x11-publish" >> /etc/pulse/system.pa
+
 WORKDIR /app
 
 COPY requirements.txt .
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install -r requirements.txt
 
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
-
-# Copy the rest of the application
 COPY . .
 
-# Expose port
 EXPOSE 8000
 
-# Set up entrypoint script
-COPY docker-entrypoint.sh /
-RUN chmod +x /docker-entrypoint.sh
+ENV DISPLAY=:99
+ENV PULSE_SERVER=unix:/var/run/pulse/native
+ENV XDG_RUNTIME_DIR=/tmp
 
-ENV DISPLAY=:0
-
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

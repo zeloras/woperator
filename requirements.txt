@@ -1,4 +1,11 @@
-flask
-flask-socketio
-mss
-pillow 
+flask==3.0.1
+flask-socketio==5.3.6
+python-socketio==5.11.0
+eventlet==0.35.1
+numpy==1.26.3
+opencv-python-headless==4.9.0.80
+python-xlib==0.33
+psutil==5.9.8
+python-dotenv==1.0.1
+requests==2.31.0
+websockets==12.0
