@@ -158,25 +158,45 @@
         let mouseEnabled = true;
         let keyboardEnabled = true;
         let streamActive = false;
+        let reconnectAttempts = 0;
+        let reconnectTimeout = null;
+        const MAX_RECONNECT_ATTEMPTS = 5;
+        const RECONNECT_DELAY = 2000;
 
         function startStream() {
+            clearTimeout(reconnectTimeout);
             stream.style.display = 'none';
             loading.style.display = 'block';
-            stream.src = '/stream?' + new Date().getTime();
+            loading.textContent = 'Connecting to stream...';
+            
+            // Create new image to preload
+            const newStream = new Image();
+            newStream.onload = () => {
+                stream.src = newStream.src;
+                loading.style.display = 'none';
+                stream.style.display = 'block';
+                streamActive = true;
+                reconnectAttempts = 0;
+            };
+            
+            newStream.onerror = () => {
+                streamActive = false;
+                handleStreamError();
+            };
+            
+            newStream.src = '/stream?' + new Date().getTime();
         }
 
-        // Stream handling
-        stream.onload = () => {
-            loading.style.display = 'none';
-            stream.style.display = 'block';
-            streamActive = true;
-        };
-
-        stream.onerror = () => {
-            loading.textContent = 'Stream error, retrying';
-            streamActive = false;
-            setTimeout(startStream, 5000);
-        };
+        function handleStreamError() {
+            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                loading.textContent = 'Stream connection failed. Please refresh the page.';
+                return;
+            }
+            
+            reconnectAttempts++;
+            loading.textContent = `Reconnecting (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`;
+            reconnectTimeout = setTimeout(startStream, RECONNECT_DELAY);
+        }
 
         // Socket connection handling
         socket.on('connect', () => {
@@ -193,21 +213,36 @@
             streamActive = false;
         });
 
-        // Mouse event handling
+        socket.on('connect_error', () => {
+            status.textContent = 'Connection Error';
+            status.classList.remove('connected');
+        });
+
+        // Mouse event handling with debounce for move events
+        let moveTimeout = null;
+        const MOVE_DELAY = 16; // ~60fps
+
         stream.addEventListener('mousemove', (e) => {
             if (!mouseEnabled) return;
-            const rect = stream.getBoundingClientRect();
-            const scaleX = 1920 / rect.width;
-            const scaleY = 1080 / rect.height;
-            const x = Math.round((e.clientX - rect.left) * scaleX);
-            const y = Math.round((e.clientY - rect.top) * scaleY);
             
-            socket.emit('input_event', {
-                type: 'mouse',
-                action: 'move',
-                x: x,
-                y: y
-            });
+            if (moveTimeout) return;
+            
+            moveTimeout = setTimeout(() => {
+                const rect = stream.getBoundingClientRect();
+                const scaleX = stream.naturalWidth / rect.width;
+                const scaleY = stream.naturalHeight / rect.height;
+                const x = Math.round((e.clientX - rect.left) * scaleX);
+                const y = Math.round((e.clientY - rect.top) * scaleY);
+                
+                socket.emit('input_event', {
+                    type: 'mouse',
+                    action: 'move',
+                    x: x,
+                    y: y
+                });
+                
+                moveTimeout = null;
+            }, MOVE_DELAY);
         });
 
         stream.addEventListener('mousedown', (e) => {
@@ -216,30 +251,52 @@
             socket.emit('input_event', {
                 type: 'mouse',
                 action: 'click',
+                button: e.button + 1,
+                x: e.clientX,
+                y: e.clientY
+            });
+        });
+
+        stream.addEventListener('mouseup', (e) => {
+            if (!mouseEnabled) return;
+            e.preventDefault();
+            socket.emit('input_event', {
+                type: 'mouse',
+                action: 'release',
                 button: e.button + 1
             });
         });
 
+        // Prevent context menu
         stream.addEventListener('contextmenu', (e) => {
             e.preventDefault();
         });
 
         // Keyboard event handling
         document.addEventListener('keydown', (e) => {
-            if (!keyboardEnabled) return;
-            if (e.target === document.body) {
-                e.preventDefault();
-                socket.emit('input_event', {
-                    type: 'keyboard',
-                    action: 'keydown',
-                    key: e.key,
-                    code: e.code,
-                    shift: e.shiftKey,
-                    ctrl: e.ctrlKey,
-                    alt: e.altKey,
-                    meta: e.metaKey
-                });
-            }
+            if (!keyboardEnabled || e.target !== document.body) return;
+            e.preventDefault();
+            socket.emit('input_event', {
+                type: 'keyboard',
+                action: 'keydown',
+                key: e.key,
+                code: e.code,
+                shift: e.shiftKey,
+                ctrl: e.ctrlKey,
+                alt: e.altKey,
+                meta: e.metaKey
+            });
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (!keyboardEnabled || e.target !== document.body) return;
+            e.preventDefault();
+            socket.emit('input_event', {
+                type: 'keyboard',
+                action: 'keyup',
+                key: e.key,
+                code: e.code
+            });
         });
 
         // Control button handling
@@ -262,11 +319,9 @@
         });
 
         refreshBtn.addEventListener('click', () => {
+            reconnectAttempts = 0;
             startStream();
         });
-
-        // Initial stream start
-        startStream();
 
         // Handle window resize
         let resizeTimeout;
@@ -278,6 +333,9 @@
                 }
             }, 500);
         });
+
+        // Initial stream start
+        startStream();
     </script>
 </body>
 </html> 
