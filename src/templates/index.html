@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Remote Desktop</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            display: flex;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Sidebar styles */
+        .sidebar {
+            width: 300px;
+            background: #1a1a1a;
+            color: white;
+            transform: translateX(300px);
+            transition: transform 0.3s ease;
+            position: fixed;
+            height: 100vh;
+            right: 0;
+            z-index: 1000;
+        }
+
+        .sidebar.open {
+            transform: translateX(0);
+        }
+
+        .sidebar-toggle {
+            position: fixed;
+            right: 10px;
+            top: 10px;
+            z-index: 1001;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        /* Control toggle */
+        .control-toggle {
+            position: fixed;
+            left: 10px;
+            top: 10px;
+            z-index: 1001;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-toggle.active {
+            background: rgba(0, 255, 0, 0.7);
+        }
+
+        .control-toggle i {
+            font-size: 16px;
+        }
+
+        /* Tab styles */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #333;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            color: white;
+            flex: 1;
+        }
+
+        .tab.active {
+            background: #333;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 20px;
+            height: calc(100vh - 41px);
+            overflow-y: auto;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Chat styles */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100% - 40px);
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+
+        .message {
+            margin: 5px;
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 80%;
+        }
+
+        .message.user {
+            background: #2c5282;
+            margin-left: auto;
+        }
+
+        .message.operator {
+            background: #2d3748;
+            margin-right: auto;
+        }
+
+        .chat-input {
+            display: flex;
+            gap: 5px;
+        }
+
+        .chat-input input {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            background: #333;
+            color: white;
+        }
+
+        .chat-input button {
+            padding: 8px 15px;
+            background: #2c5282;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+        }
+
+        /* Settings styles */
+        .settings-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .setting-group {
+            background: #2d3748;
+            padding: 15px;
+            border-radius: 5px;
+        }
+
+        .setting-group h3 {
+            margin: 0 0 10px 0;
+        }
+
+        .resolution-select {
+            width: 100%;
+            padding: 8px;
+            background: #1a1a1a;
+            color: white;
+            border: 1px solid #333;
+            border-radius: 4px;
+        }
+
+        /* Main content */
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-right: 0;
+            transition: margin-right 0.3s ease;
+        }
+
+        .main-content.sidebar-open {
+            margin-right: 300px;
+        }
+
+        #screen {
+            max-width: 100%;
+            max-height: 100vh;
+            object-fit: contain;
+        }
+
+        .status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+
+        .webcam-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            flex-direction: column;
+        }
+
+        .webcam-video {
+            width: 320px;
+            height: 240px;
+            background: #333;
+            border-radius: 5px;
+            object-fit: cover;
+        }
+
+        .toggle-btn {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px 0;
+        }
+
+        .toggle-btn.active {
+            background: rgba(0, 255, 0, 0.7);
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <button class="control-toggle" id="controlToggle">
+        <i class="fas fa-mouse-pointer"></i>
+        Controls Off
+    </button>
+
+    <button class="sidebar-toggle">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <div class="sidebar">
+        <div class="tabs">
+            <button class="tab active" data-tab="chat">Chat</button>
+            <button class="tab" data-tab="settings">Settings</button>
+        </div>
+
+        <div class="tab-content active" id="chat">
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <!-- Messages will be added here -->
+                </div>
+                <div class="chat-input">
+                    <input type="text" id="messageInput" placeholder="Type your message...">
+                    <button onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="settings">
+            <div class="settings-container">
+                <div class="setting-group">
+                    <h3>Screen Resolution</h3>
+                    <select class="resolution-select" id="resolutionSelect" onchange="changeResolution()">
+                        <option value="1920x1080">1920x1080</option>
+                        <option value="1600x900">1600x900</option>
+                        <option value="1366x768">1366x768</option>
+                        <option value="1280x720">1280x720</option>
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <h3>Device Controls</h3>
+                    <button id="micToggle" class="toggle-btn">Microphone</button>
+                    <button id="webcamToggle" class="toggle-btn">Webcam</button>
+                    <button id="audioToggle" class="toggle-btn active">System Audio</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div id="status" class="status">Disconnected</div>
+        <img id="screen" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Screen">
+        
+        <div class="webcam-container">
+            <video id="localWebcam" class="webcam-video" autoplay muted></video>
+            <video id="remoteWebcam" class="webcam-video" autoplay></video>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const screen = document.getElementById('screen');
+        const status = document.querySelector('.status');
+        const micToggle = document.getElementById('micToggle');
+        const audioToggle = document.getElementById('audioToggle');
+        const webcamToggle = document.getElementById('webcamToggle');
+        const localWebcam = document.getElementById('localWebcam');
+        const remoteWebcam = document.getElementById('remoteWebcam');
+        const controlToggle = document.getElementById('controlToggle');
+        
+        // Audio context and settings
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const SAMPLE_RATE = 44100;
+        const CHANNELS = 2;
+        let audioEnabled = true;
+        let micEnabled = false;
+        let webcamEnabled = false;
+        let controlsEnabled = false;
+        let mediaStream = null;
+        let mediaRecorder = null;
+        let webcamStream = null;
+        
+        // Set canvas dimensions
+        screen.width = 1920;
+        screen.height = 1080;
+        
+        // Control toggle handler
+        controlToggle.addEventListener('click', () => {
+            controlsEnabled = !controlsEnabled;
+            controlToggle.classList.toggle('active');
+            screen.classList.toggle('controls-active');
+            
+            const icon = controlToggle.querySelector('i');
+            if (controlsEnabled) {
+                controlToggle.textContent = 'Controls On ';
+                icon.className = 'fas fa-mouse-pointer';
+                screen.style.cursor = 'auto';
+            } else {
+                controlToggle.textContent = 'Controls Off ';
+                icon.className = 'fas fa-mouse-pointer';
+                screen.style.cursor = 'default';
+            }
+            controlToggle.appendChild(icon);
+        });
+        
+        // Screen frame handler
+        socket.on('screen_frame', (data) => {
+            screen.src = 'data:image/jpeg;base64,' + data.data;
+        });
+        
+        // Webcam frame handler
+        socket.on('webcam_frame', function(data) {
+            if (!webcamEnabled) return;
+            const img = new Image();
+            img.onload = function() {
+                remoteWebcam.style.display = 'block';
+                const context = remoteWebcam.getContext('2d');
+                context.drawImage(img, 0, 0, remoteWebcam.width, remoteWebcam.height);
+            };
+            img.src = 'data:image/jpeg;base64,' + data.data;
+        });
+        
+        // Webcam status handler
+        socket.on('webcam_status', function(data) {
+            if (data.status === 'started') {
+                webcamToggle.classList.add('active');
+            } else if (data.status === 'stopped' || data.status === 'error') {
+                webcamToggle.classList.remove('active');
+                remoteWebcam.style.display = 'none';
+            }
+        });
+        
+        // Initialize webcam
+        async function initWebcam() {
+            try {
+                webcamStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: {
+                        width: 640,
+                        height: 480
+                    }
+                });
+                localWebcam.srcObject = webcamStream;
+                localWebcam.style.display = 'block';
+                
+                const track = webcamStream.getVideoTracks()[0];
+                const imageCapture = new ImageCapture(track);
+                
+                setInterval(async () => {
+                    if (!webcamEnabled) return;
+                    try {
+                        const bitmap = await imageCapture.grabFrame();
+                        const canvas = document.createElement('canvas');
+                        canvas.width = bitmap.width;
+                        canvas.height = bitmap.height;
+                        const context = canvas.getContext('2d');
+                        context.drawImage(bitmap, 0, 0);
+                        const data = canvas.toDataURL('image/jpeg', 0.7);
+                        socket.emit('webcam_client', {
+                            data: data.split(',')[1]
+                        });
+                    } catch (e) {
+                        console.error('Error capturing webcam frame:', e);
+                    }
+                }, 1000 / 30);
+                
+            } catch (error) {
+                console.error('Error accessing webcam:', error);
+                webcamToggle.style.display = 'none';
+            }
+        }
+        
+        // Audio data handler
+        socket.on('audio_data', function(data) {
+            if (!audioEnabled) return;
+            
+            const audioData = new Float32Array(base64ToArrayBuffer(data.data));
+            const audioBuffer = audioContext.createBuffer(CHANNELS, audioData.length / CHANNELS, SAMPLE_RATE);
+            
+            for (let channel = 0; channel < CHANNELS; channel++) {
+                const channelData = audioBuffer.getChannelData(channel);
+                for (let i = 0; i < channelData.length; i++) {
+                    channelData[i] = audioData[i * CHANNELS + channel];
+                }
+            }
+            
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start();
+        });
+        
+        // Initialize microphone
+        async function initMicrophone() {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(mediaStream);
+                
+                mediaRecorder.ondataavailable = async (event) => {
+                    if (event.data.size > 0 && micEnabled) {
+                        const audioData = await event.data.arrayBuffer();
+                        const float32Array = new Float32Array(audioData);
+                        socket.emit('mic_data', {
+                            data: arrayBufferToBase64(float32Array.buffer)
+                        });
+                    }
+                };
+                
+                mediaRecorder.start(100);
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                micToggle.style.display = 'none';
+            }
+        }
+        
+        // Control button handlers
+        micToggle.addEventListener('click', () => {
+            micEnabled = !micEnabled;
+            micToggle.classList.toggle('active');
+            if (micEnabled && !mediaRecorder) {
+                initMicrophone();
+            }
+        });
+        
+        audioToggle.addEventListener('click', () => {
+            audioEnabled = !audioEnabled;
+            audioToggle.classList.toggle('active');
+        });
+        
+        webcamToggle.addEventListener('click', () => {
+            webcamEnabled = !webcamEnabled;
+            if (webcamEnabled) {
+                if (!webcamStream) {
+                    initWebcam();
+                }
+                socket.emit('start_webcam');
+                localWebcam.style.display = 'block';
+            } else {
+                socket.emit('stop_webcam');
+                localWebcam.style.display = 'none';
+                remoteWebcam.style.display = 'none';
+            }
+        });
+        
+        // Mouse event handlers
+        screen.addEventListener('mousemove', function(e) {
+            if (!controlsEnabled) return;
+            const rect = screen.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (screen.width / rect.width);
+            const y = (e.clientY - rect.top) * (screen.height / rect.height);
+            socket.emit('mouse_event', {
+                type: 'move',
+                x: x,
+                y: y
+            });
+        });
+        
+        screen.addEventListener('click', function(e) {
+            if (!controlsEnabled) return;
+            const rect = screen.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (screen.width / rect.width);
+            const y = (e.clientY - rect.top) * (screen.height / rect.height);
+            socket.emit('mouse_event', {
+                type: 'click',
+                x: x,
+                y: y
+            });
+        });
+
+        // Special keys map
+        const specialKeys = {
+            'Backspace': 'backspace',
+            'Tab': 'tab',
+            'Enter': 'enter',
+            'Shift': 'shift',
+            'Control': 'ctrl',
+            'Alt': 'alt',
+            'CapsLock': 'capslock',
+            'Escape': 'esc',
+            'Space': 'space',
+            'PageUp': 'pageup',
+            'PageDown': 'pagedown',
+            'End': 'end',
+            'Home': 'home',
+            'ArrowLeft': 'left',
+            'ArrowUp': 'up',
+            'ArrowRight': 'right',
+            'ArrowDown': 'down',
+            'Delete': 'delete',
+        };
+
+        // Keyboard event handler
+        screen.addEventListener('keydown', function(e) {
+            if (!controlsEnabled) return;
+            e.preventDefault();
+            
+            if (e.ctrlKey || e.altKey || e.metaKey) {
+                const keys = [];
+                if (e.ctrlKey) keys.push('ctrl');
+                if (e.altKey) keys.push('alt');
+                if (e.metaKey) keys.push('command');
+                
+                let key = e.key.toLowerCase();
+                if (key.length === 1) {
+                    keys.push(key);
+                    socket.emit('keyboard_special', { keys: keys });
+                }
+                return;
+            }
+
+            let key = e.key;
+            if (specialKeys[key]) {
+                key = specialKeys[key];
+            }
+            
+            socket.emit('keyboard_event', {
+                type: 'keydown',
+                key: key
+            });
+        });
+
+        // Connection status handlers
+        socket.on('connect', () => {
+            status.textContent = 'Connected';
+            status.style.backgroundColor = 'rgba(0, 255, 0, 0.7)';
+            // Start screen capture immediately after connection
+            socket.emit('request_screen');
+        });
+
+        socket.on('disconnect', () => {
+            status.textContent = 'Disconnected';
+            status.style.backgroundColor = 'rgba(255, 0, 0, 0.7)';
+        });
+
+        // Audio helper functions
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const length = binaryString.length;
+            const bytes = new Uint8Array(length);
+            
+            for (let i = 0; i < length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            
+            return bytes.buffer;
+        }
+        
+        function arrayBufferToBase64(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            
+            return window.btoa(binary);
+        }
+
+        // Set focus on canvas for keyboard input
+        screen.focus();
+        
+        // Hide video elements by default
+        localWebcam.style.display = 'none';
+        remoteWebcam.style.display = 'none';
+
+        // Sidebar toggle
+        const sidebarToggle = document.querySelector('.sidebar-toggle');
+        const sidebar = document.querySelector('.sidebar');
+        const mainContent = document.querySelector('.main-content');
+
+        sidebarToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+            mainContent.classList.toggle('sidebar-open');
+        });
+
+        // Tab switching
+        const tabs = document.querySelectorAll('.tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remove active class from all tabs and contents
+                tabs.forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                
+                // Add active class to clicked tab and corresponding content
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab).classList.add('active');
+            });
+        });
+
+        // Chat functionality
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (message) {
+                // Add user message to chat
+                addMessageToChat('user', message);
+                
+                // Send to server
+                socket.emit('chat_message', { message });
+                
+                // Clear input
+                input.value = '';
+            }
+        }
+
+        function addMessageToChat(type, text) {
+            const messagesContainer = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = text;
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Handle chat response from server
+        socket.on('chat_response', function(data) {
+            addMessageToChat('operator', data.message);
+        });
+
+        // Resolution change handler
+        function changeResolution() {
+            const resolution = document.getElementById('resolutionSelect').value;
+            const [width, height] = resolution.split('x').map(Number);
+            
+            // Send resolution change request to server
+            socket.emit('change_resolution', { width, height });
+            
+            // Update canvas size
+            const canvas = document.getElementById('screen');
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        // Add message input handler for Enter key
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html> 

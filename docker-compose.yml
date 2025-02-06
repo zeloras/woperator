@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  desktop:
+    build: .
+    ports:
+      - "8000:8000"  # Backend API
+    volumes:
+      - ./src:/app/src
+    environment:
+      - DISPLAY=:1
+      - PULSE_SERVER=unix:/tmp/pulseaudio.socket
+    devices:
+      - "/dev/snd:/dev/snd"  # For audio support
+    privileged: true  # Required for display and input handling
+    shm_size: '2gb'  # Shared memory for better performance 
