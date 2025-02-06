@@ -31,6 +31,8 @@ RUN apt-get update && apt-get install -y \
     libvpx9 \
     portaudio19-dev \
     gnome-screenshot \
+    wmctrl \
+    xdotool \
     python3-pip \
     python3-dev \
     python3-venv \
@@ -69,6 +71,10 @@ RUN chown -R app_user:app_user /app
 # Set up PulseAudio configuration
 RUN mkdir -p /home/app_user/.config/pulse && \
     chown -R app_user:app_user /home/app_user/.config
+
+# Create Firefox profile directory
+RUN mkdir -p /home/app_user/.mozilla && \
+    chown -R app_user:app_user /home/app_user/.mozilla
 
 # Expose port
 EXPOSE 8000

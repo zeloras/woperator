@@ -38,8 +38,11 @@ chmod a+w /tmp/.X11-unix/X1
 # Start window manager
 fluxbox &
 
-# Start VNC server
-x11vnc -display :1 -nopw -forever -shared &
+# Wait for window manager to start
+sleep 3
+
+# Start Firefox in the background
+firefox-esr --no-remote --new-instance "http://localhost:8000" &
 
 # Configure PulseAudio
 export PULSE_SERVER=unix:/tmp/pulseaudio.socket
