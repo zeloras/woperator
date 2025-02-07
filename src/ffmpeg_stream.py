@@ -90,12 +90,13 @@ async def capture_audio():
             '-f', 'pulse',
             '-i', 'virtual_sink.monitor',
             '-acodec', 'libmp3lame',
-            '-b:a', FFMPEG_AUDIO_SETTINGS['bitrate'],
-            '-ac', str(FFMPEG_AUDIO_SETTINGS['channels']),
-            '-ar', str(FFMPEG_AUDIO_SETTINGS['sample_rate']),
+            '-ar', '44100',
+            '-ac', '2',
+            '-b:a', '128k',
+            '-bufsize', '128k',
+            '-maxrate', '128k',
+            '-minrate', '128k',
             '-f', 'mp3',
-            '-write_xing', '0',
-            '-id3v2_version', '0',
             '-'
         ]
         
@@ -105,11 +106,6 @@ async def capture_audio():
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        
-        # Читаем первые 4KB для получения MP3 заголовка
-        header = await process.stdout.read(4096)
-        if header:
-            yield header
         
         while True:
             chunk = await process.stdout.read(AUDIO_CHUNK_SIZE)

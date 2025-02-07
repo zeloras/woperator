@@ -1,7 +1,6 @@
 let ws = null;
 let isInteractive = false;
 const img = document.getElementById('videoDisplay');
-const audio = document.getElementById('audioPlayer');
 const container = document.querySelector('.container');
 const mousePosDiv = document.getElementById('mousePos');
 const interactiveBtn = document.getElementById('interactiveMode');
@@ -14,12 +13,11 @@ const tabs = document.querySelectorAll('.tab');
 const chatInput = document.getElementById('chatInput');
 const chatMessages = document.getElementById('chatMessages');
 
-let mediaSource = null;
-let sourceBuffer = null;
-let audioQueue = [];
-let isBufferUpdating = false;
-
-audio.muted = true;  // По умолчанию звук выключен
+let audioEnabled = false;
+let audioBuffer = [];
+let audioBufferSize = 0;
+const MIN_BUFFER_SIZE = 32768; // 32KB минимальный размер буфера
+let audioPlayer = null;
 
 // Sidebar functionality
 sidebarToggle.addEventListener('click', () => {
@@ -80,44 +78,85 @@ const showError = (message) => {
 };
 
 function initAudio() {
+    audioEnabled = true;
+    audioBuffer = [];
+    audioBufferSize = 0;
+    console.log('Audio initialized');
+}
+
+function playBufferedAudio() {
+    if (!audioEnabled || audioBufferSize < MIN_BUFFER_SIZE) return;
+
     try {
-        mediaSource = new MediaSource();
-        audio.src = URL.createObjectURL(mediaSource);
-        
-        mediaSource.addEventListener('sourceopen', () => {
-            try {
-                sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
-                sourceBuffer.mode = 'sequence';
-                
-                sourceBuffer.addEventListener('updateend', () => {
-                    isBufferUpdating = false;
-                    processAudioQueue();
-                });
-                
-                console.log('Audio MediaSource initialized');
-            } catch (e) {
-                console.error('Error initializing source buffer:', e);
-                showError('Error initializing audio: ' + e.message);
-            }
+        const concatenated = new Uint8Array(audioBufferSize);
+        let offset = 0;
+        for (const chunk of audioBuffer) {
+            concatenated.set(chunk, offset);
+            offset += chunk.length;
+        }
+
+        const blob = new Blob([concatenated], { type: 'audio/mpeg' });
+        const url = URL.createObjectURL(blob);
+
+        if (audioPlayer) {
+            audioPlayer.pause();
+            URL.revokeObjectURL(audioPlayer.src);
+        }
+
+        audioPlayer = new Audio();
+        audioPlayer.onended = () => {
+            URL.revokeObjectURL(audioPlayer.src);
+            audioPlayer = null;
+            // Очищаем буфер после воспроизведения
+            audioBuffer = [];
+            audioBufferSize = 0;
+        };
+        audioPlayer.onerror = (e) => {
+            console.error('Audio playback error:', e);
+            URL.revokeObjectURL(audioPlayer.src);
+            audioPlayer = null;
+            // Очищаем буфер при ошибке
+            audioBuffer = [];
+            audioBufferSize = 0;
+        };
+
+        audioPlayer.src = url;
+        audioPlayer.play().catch(e => {
+            console.error('Error starting audio playback:', e);
+            URL.revokeObjectURL(url);
+            audioPlayer = null;
+            // Очищаем буфер при ошибке воспроизведения
+            audioBuffer = [];
+            audioBufferSize = 0;
         });
+
     } catch (e) {
-        console.error('Error creating MediaSource:', e);
-        showError('Error creating MediaSource: ' + e.message);
+        console.error('Error playing buffered audio:', e);
+        audioBuffer = [];
+        audioBufferSize = 0;
     }
 }
 
-function processAudioQueue() {
-    if (!sourceBuffer || isBufferUpdating || audioQueue.length === 0) {
-        return;
-    }
-    
+function updateAudio(data) {
+    if (!audioEnabled) return;
+
     try {
-        isBufferUpdating = true;
-        const data = audioQueue.shift();
-        sourceBuffer.appendBuffer(data);
+        const chunk = Uint8Array.from(atob(data), c => c.charCodeAt(0));
+        audioBuffer.push(chunk);
+        audioBufferSize += chunk.length;
+
+        // Если буфер достаточно большой, начинаем воспроизведение
+        if (audioBufferSize >= MIN_BUFFER_SIZE && !audioPlayer) {
+            playBufferedAudio();
+        }
+
+        // Если буфер стал слишком большим, очищаем его
+        if (audioBufferSize > MIN_BUFFER_SIZE * 2) {
+            audioBuffer = [];
+            audioBufferSize = 0;
+        }
     } catch (e) {
-        console.error('Error appending buffer:', e);
-        isBufferUpdating = false;
+        console.error('Error updating audio:', e);
     }
 }
 
@@ -229,45 +268,23 @@ container.addEventListener('mousedown', (e) => {
 
 // Audio toggle
 toggleAudioBtn.addEventListener('click', () => {
-    if (audio.muted) {
-        if (!mediaSource) {
-            initAudio();
-        }
-        audio.muted = false;
+    if (!audioEnabled) {
+        initAudio();
         toggleAudioBtn.textContent = 'Disable Audio';
         toggleAudioBtn.classList.add('active');
-        audio.play().catch(e => {
-            console.error('Failed to play audio:', e);
-            audio.muted = true;
-            toggleAudioBtn.textContent = 'Enable Audio';
-            toggleAudioBtn.classList.remove('active');
-            showError('Failed to play audio: ' + e.message);
-        });
     } else {
-        audio.muted = true;
+        audioEnabled = false;
+        if (audioPlayer) {
+            audioPlayer.pause();
+            URL.revokeObjectURL(audioPlayer.src);
+            audioPlayer = null;
+        }
+        audioBuffer = [];
+        audioBufferSize = 0;
         toggleAudioBtn.textContent = 'Enable Audio';
         toggleAudioBtn.classList.remove('active');
     }
 });
-
-function updateAudio(data) {
-    try {
-        if (!sourceBuffer) {
-            return;
-        }
-
-        const binary = atob(data);
-        const array = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-            array[i] = binary.charCodeAt(i);
-        }
-        
-        audioQueue.push(array);
-        processAudioQueue();
-    } catch (e) {
-        console.error('Error updating audio:', e);
-    }
-}
 
 // Initialize WebSocket connection
 connectWebSocket(); 

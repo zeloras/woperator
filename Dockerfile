@@ -29,7 +29,9 @@ RUN apt-get update && apt-get install -y \
     libavdevice-dev \
     libavfilter-dev \
     libopus-dev \
+    libvorbis-dev \
     libvpx-dev \
+    libwebm-dev \
     libx264-dev \
     libsrtp2-dev \
     python3-opencv \
