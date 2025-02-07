@@ -42,17 +42,22 @@ async def websocket_handler(request):
                                     break
                                     
                                 frame_count += 1
-                                if frame_count % 30 == 0:
-                                    current_time = asyncio.get_event_loop().time()
-                                    elapsed = current_time - start_time
-                                    fps = frame_count / elapsed
-                                    logger.info(f"Current FPS: {fps:.2f}")
+                                current_time = asyncio.get_event_loop().time()
                                 
                                 frame_data = base64.b64encode(frame).decode('utf-8')
                                 await ws.send_json({
                                     'type': 'video',
                                     'data': frame_data
                                 })
+                                
+                                if frame_count % 30 == 0:
+                                    elapsed = current_time - start_time
+                                    fps = frame_count / elapsed
+                                    logger.info(f"Current FPS: {fps:.2f}")
+                                    frame_count = 0
+                                    start_time = current_time
+                                
+                                await asyncio.sleep(0.001)  # Минимальная задержка для контроля нагрузки
                         except Exception as e:
                             logger.error(f"Video streaming error: {str(e)}")
                             if not ws.closed:

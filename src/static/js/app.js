@@ -142,7 +142,7 @@ function connectWebSocket() {
     let pendingFrame = null;
     let frameUpdateScheduled = false;
     let lastFrameTime = 0;
-    const targetFrameTime = 1000 / 120; // Целевое время между кадрами для 120 FPS
+    const targetFrameTime = 1000 / 30; // 30 FPS
     
     function updateFrame(timestamp) {
         if (pendingFrame) {

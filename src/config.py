@@ -15,10 +15,10 @@ DISPLAY = ':99'
 
 # Настройки FFmpeg
 FFMPEG_VIDEO_SETTINGS = {
-    'framerate': 60,
-    'video_size': '1920x1080',
-    'quality': 3,
-    'threads': 4
+    'framerate': 30,
+    'video_size': '1280x720',
+    'quality': 5,
+    'threads': 8
 }
 
 FFMPEG_AUDIO_SETTINGS = {
