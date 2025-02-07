@@ -23,7 +23,7 @@ xauth generate :0 . trusted
 fluxbox &
 
 # Start Firefox with specific settings
-firefox --kiosk about:blank &
+firefox-esr --no-remote --new-instance "http://localhost:8000" &
 
 # Start the Python application
 /opt/venv/bin/python3 /app/src/app.py 

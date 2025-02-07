@@ -1,15 +1,15 @@
 # Woperator - Web Desktop Streaming Service
 
 ## Overview
-Woperator is a containerized solution for streaming a virtual desktop environment through a web interface. The project creates a complete virtual desktop environment inside a Docker container and streams both video and audio output to a web browser using FFmpeg for efficient media streaming.
+Woperator is a containerized solution for streaming a virtual desktop environment through a web interface using WebRTC for ultra-low latency communication. The project creates a complete virtual desktop environment inside a Docker container and streams both video/audio output via WebRTC protocol.
 
 ## Features
 - Virtual X11 desktop environment running in a container
+- WebRTC-based streaming с минимальной задержкой
+- STUN/TURN сервер для NAT-трансверсали
+- Адаптивное качество потока (Simulcast)
 - Firefox browser running in kiosk mode
-- Audio support via PulseAudio
-- Real-time desktop streaming using FFmpeg
-- Web interface for viewing the stream (port 8000)
-- Supervisor-managed processes for reliability
+- Web interface with WebRTC client (port 8000)
 
 ## Prerequisites
 - Docker
@@ -17,69 +17,62 @@ Woperator is a containerized solution for streaming a virtual desktop environmen
 - x86_64 architecture support
 
 ## Quick Start
-1. Clone the repository:
+1. Клонируйте репозиторий:
 ```bash
 git clone https://github.com/yourusername/woperator.git
 cd woperator
 ```
 
-2. Build and run the container:
+2. Запустите сервисы (основной контейнер + Janus Gateway):
 ```bash
-docker-compose up --build
+docker-compose -f docker-compose.yml -f janus/docker-compose.janus.yml up --build
 ```
 
-3. Access the stream:
-Open your web browser and navigate to `http://localhost:8000`
+3. Откройте веб-интерфейс:
+`http://localhost:8000`
 
 ## Architecture
-The project consists of several key components:
+### Key Components
+- **Janus Gateway**: WebRTC медиасервер
+- **GStreamer**: Захват и обработка медиапотока
+- **Xvfb**: Virtual framebuffer
+- **Fluxbox**: Window manager
+- **WebRTC Client**: Веб-интерфейс для просмотра
 
-### Container Components
-- **Xvfb**: Virtual X11 framebuffer
-- **Fluxbox**: Lightweight window manager
-- **Firefox**: Web browser in kiosk mode
-- **PulseAudio**: Audio server
-- **FFmpeg**: Media streaming
-- **Python Application**: Web server and stream management
-
-### Process Management
-All processes are managed by Supervisor to ensure reliability and proper startup order:
-1. Xvfb (Virtual framebuffer)
-2. PulseAudio (Audio server)
-3. Fluxbox (Window manager)
-4. Firefox (Browser instance)
-5. Python application (Web server and stream handler)
+### Data Flow
+1. Захват экрана через Xvfb
+2. Кодирование потока через GStreamer
+3. Трансляция через Janus Gateway
+4. Клиентское подключение по WebRTC
 
 ## Configuration
-- Default resolution: 1920x1080
-- Streaming port: 8000
-- Firefox runs in kiosk mode
-- Audio is captured through PulseAudio
+```ini
+# WebRTC параметры
+STUN_SERVER=stun:stun.l.google.com:19302
+TURN_SERVER=turn:your.turn.server:5349
+SIMULCAST=true
+RESOLUTION=1920x1080@30fps
+```
 
-## Development
-The project structure is organized as follows:
+## Development Changes
 ```
 woperator/
-├── src/
-│   ├── app.py
-│   └── modules/
-├── supervisor/
-│   └── supervisord.conf
-├── Dockerfile
-├── docker-compose.yml
-├── docker-entrypoint.sh
-├── requirements.txt
-└── README.md
+├── janus/               # Конфиги Janus Gateway
+├── webrtc/              # WebRTC клиент
+└── src/
+    └── stream_handler.py # GStreamer pipeline management
 ```
 
 ## Troubleshooting
-1. If the stream doesn't start:
-   - Check container logs: `docker-compose logs`
-   - Verify all services are running: `docker-compose exec desktop supervisorctl status`
-
-2. Audio issues:
-   - Verify PulseAudio is running
-   - Check PulseAudio logs in container
+1. Проблемы с подключением:
+   - Проверьте доступность портов 8088(Janus) и 8000(Web)
+   - Убедитесь в работе STUN/TURN серверов
+   
+2. Проблемы с потоком:
+```bash
+docker-compose logs gstreamer
+docker-compose logs janus
+```
 
 ## License
 MIT License
