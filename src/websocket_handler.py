@@ -4,9 +4,14 @@ import logging
 import base64
 from aiohttp import web, WSMsgType
 from src.ffmpeg_stream import capture_screen, capture_audio
-from src.x11_utils import run_xdotool
+from src.x11_utils import move_mouse, click_mouse, type_text, send_key
+from src.config import FFMPEG_VIDEO_SETTINGS
 
 logger = logging.getLogger(__name__)
+
+# Get actual screen dimensions from config
+SCREEN_WIDTH = int(FFMPEG_VIDEO_SETTINGS['video_size'].split('x')[0])
+SCREEN_HEIGHT = int(FFMPEG_VIDEO_SETTINGS['video_size'].split('x')[1])
 
 async def websocket_handler(request):
     ws = web.WebSocketResponse()
@@ -57,7 +62,7 @@ async def websocket_handler(request):
                                     frame_count = 0
                                     start_time = current_time
                                 
-                                await asyncio.sleep(0.001)  # Минимальная задержка для контроля нагрузки
+                                await asyncio.sleep(0.001)
                         except Exception as e:
                             logger.error(f"Video streaming error: {str(e)}")
                             if not ws.closed:
@@ -89,19 +94,31 @@ async def websocket_handler(request):
                     audio_task = asyncio.create_task(stream_audio())
                 
                 elif command == 'click':
-                    x, y = data.get('x', 0), data.get('y', 0)
-                    success = await run_xdotool(['mousemove', str(x), str(y), 'click', '1'])
+                    x = int(data.get('x', 0))
+                    y = int(data.get('y', 0))
+                    button = int(data.get('button', 1))
+                    success = await click_mouse(x, y, button)
                     await ws.send_json({'status': 'ok' if success else 'error'})
                 
                 elif command == 'move':
-                    x, y = data.get('x', 0), data.get('y', 0)
-                    success = await run_xdotool(['mousemove', str(x), str(y)])
+                    x = int(data.get('x', 0))
+                    y = int(data.get('y', 0))
+                    success = await move_mouse(x, y)
+                    await ws.send_json({'status': 'ok' if success else 'error'})
+                
+                elif command == 'type':
+                    text = data.get('text', '')
+                    success = await type_text(text)
+                    await ws.send_json({'status': 'ok' if success else 'error'})
+                
+                elif command == 'key':
+                    key = data.get('key', '')
+                    success = await send_key(key)
                     await ws.send_json({'status': 'ok' if success else 'error'})
                 
                 elif command == 'chat':
                     message = data.get('message', '')
                     logger.info(f"Chat message received: {message}")
-                    # Заглушка - просто отправляем "ok" в ответ
                     await ws.send_json({
                         'type': 'chat',
                         'message': 'ok'

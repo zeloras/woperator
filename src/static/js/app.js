@@ -230,21 +230,145 @@ interactiveBtn.addEventListener('click', () => {
     interactiveBtn.classList.toggle('active');
 });
 
+// Keyboard mapping for special keys
+const specialKeys = {
+    'Enter': 'Return',
+    'Escape': 'Escape',
+    'Backspace': 'BackSpace',
+    'Tab': 'Tab',
+    'Delete': 'Delete',
+    'ArrowLeft': 'Left',
+    'ArrowRight': 'Right',
+    'ArrowUp': 'Up',
+    'ArrowDown': 'Down',
+    'PageUp': 'Page_Up',
+    'PageDown': 'Page_Down',
+    'Home': 'Home',
+    'End': 'End',
+    'Insert': 'Insert',
+    'F1': 'F1',
+    'F2': 'F2',
+    'F3': 'F3',
+    'F4': 'F4',
+    'F5': 'F5',
+    'F6': 'F6',
+    'F7': 'F7',
+    'F8': 'F8',
+    'F9': 'F9',
+    'F10': 'F10',
+    'F11': 'F11',
+    'F12': 'F12'
+};
+
 // Mouse position tracking
+let currentX = 0;
+let currentY = 0;
+let lastMoveTime = 0;
+const MOVE_THROTTLE = 1000 / 60; // 60Hz для стабильности
+
+// Добавляем отладочную информацию
+function updateDebugInfo(e, videoRect, x, y, details) {
+    const debug = {
+        mouse: `Mouse: (${e.clientX}, ${e.clientY})`,
+        container: `Container: ${Math.round(container.offsetWidth)}x${Math.round(container.offsetHeight)}`,
+        video: `Video: (${Math.round(videoRect.left)}, ${Math.round(videoRect.top)}) ${Math.round(videoRect.width)}x${Math.round(videoRect.height)}`,
+        scale: `Scale: ${details.scaleX.toFixed(3)}x${details.scaleY.toFixed(3)}`,
+        offsets: `Offsets: (${Math.round(details.offsetX)}, ${Math.round(details.offsetY)})`,
+        relative: `Relative: (${Math.round(x)}, ${Math.round(y)})`,
+        virtual: `Virtual: (${currentX}, ${currentY})`
+    };
+    mousePosDiv.innerHTML = Object.values(debug).join('<br>');
+    console.log(debug);
+}
+
 container.addEventListener('mousemove', (e) => {
-    if (isInteractive) {
-        const rect = container.getBoundingClientRect();
-        const x = Math.round((e.clientX - rect.left) * (1920 / rect.width));
-        const y = Math.round((e.clientY - rect.top) * (1080 / rect.height));
-        mousePosDiv.textContent = `Mouse: ${x}, ${y}`;
-        
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                command: 'move',
-                x: x,
-                y: y
-            }));
-        }
+    if (!isInteractive) return;
+
+    const now = performance.now();
+    if (now - lastMoveTime < MOVE_THROTTLE) return;
+    lastMoveTime = now;
+
+    const videoRect = img.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    
+    // Константы для виртуального экрана
+    const VIRTUAL_WIDTH = 1920;
+    const VIRTUAL_HEIGHT = 1080;
+    const VIRTUAL_ASPECT = VIRTUAL_WIDTH / VIRTUAL_HEIGHT;
+    
+    // Вычисляем размеры и отступы видео в контейнере
+    const containerAspect = containerRect.width / containerRect.height;
+    let videoWidth, videoHeight, offsetX, offsetY;
+    
+    if (containerAspect > VIRTUAL_ASPECT) {
+        // Контейнер шире - видео ограничено по высоте
+        videoHeight = containerRect.height;
+        videoWidth = videoHeight * VIRTUAL_ASPECT;
+        offsetX = (containerRect.width - videoWidth) / 2;
+        offsetY = 0;
+    } else {
+        // Контейнер уже - видео ограничено по ширине
+        videoWidth = containerRect.width;
+        videoHeight = videoWidth / VIRTUAL_ASPECT;
+        offsetX = 0;
+        offsetY = (containerRect.height - videoHeight) / 2;
+    }
+    
+    // Вычисляем масштаб
+    const scaleX = VIRTUAL_WIDTH / videoWidth;
+    const scaleY = VIRTUAL_HEIGHT / videoHeight;
+    
+    // Вычисляем позицию курсора относительно видео
+    const relativeX = e.clientX - containerRect.left - offsetX;
+    const relativeY = e.clientY - containerRect.top - offsetY;
+    
+    // Вычисляем относительное положение в процентах
+    const relativeXPercent = relativeX / videoWidth;
+    const relativeYPercent = relativeY / videoHeight;
+    
+    // Базовое смещение зависит от масштаба и размера контейнера
+    const baseOffsetX = Math.round(250 * (scaleX / 1.5));
+    const baseOffsetY = Math.round(200 * (scaleY / 1.5));
+    
+    // Преобразуем в виртуальные координаты с адаптивным смещением
+    currentX = Math.round(relativeX * scaleX) - baseOffsetX;
+    currentY = Math.round(relativeY * scaleY) - baseOffsetY;
+    
+    // Прогрессивная коррекция зависит от положения курсора
+    const horizontalCorrection = Math.min(0.4, relativeXPercent * 0.5);
+    const verticalCorrection = Math.min(0.3, relativeYPercent * 0.4);
+    
+    // Применяем прогрессивную коррекцию
+    if (currentX > VIRTUAL_WIDTH / 2) {
+        currentX -= Math.round((currentX - VIRTUAL_WIDTH / 2) * horizontalCorrection);
+    }
+    if (currentY > VIRTUAL_HEIGHT / 2) {
+        currentY -= Math.round((currentY - VIRTUAL_HEIGHT / 2) * verticalCorrection);
+    }
+    
+    // Дополнительная коррекция для правого края
+    if (relativeXPercent > 0.8) {
+        currentX -= Math.round((relativeXPercent - 0.8) * videoWidth * scaleX * 0.5);
+    }
+    
+    // Ограничиваем координаты
+    currentX = Math.max(0, Math.min(VIRTUAL_WIDTH, currentX));
+    currentY = Math.max(0, Math.min(VIRTUAL_HEIGHT, currentY));
+    
+    // Обновляем отладочную информацию с дополнительными деталями
+    updateDebugInfo(e, videoRect, relativeX, relativeY, {
+        scaleX,
+        scaleY,
+        offsetX,
+        offsetY
+    });
+    
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            command: 'move',
+            x: currentX,
+            y: currentY
+        }));
     }
 });
 
@@ -252,15 +376,37 @@ container.addEventListener('mousemove', (e) => {
 container.addEventListener('mousedown', (e) => {
     if (isInteractive) {
         e.preventDefault();
-        const rect = container.getBoundingClientRect();
-        const x = Math.round((e.clientX - rect.left) * (1920 / rect.width));
-        const y = Math.round((e.clientY - rect.top) * (1080 / rect.height));
         
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
                 command: 'click',
-                x: x,
-                y: y
+                x: Math.round(currentX),
+                y: Math.round(currentY),
+                button: e.button + 1 // Convert to X11 button numbering
+            }));
+        }
+    }
+});
+
+// Keyboard handling
+document.addEventListener('keydown', (e) => {
+    if (!isInteractive || e.target === chatInput) return;
+    
+    e.preventDefault();
+    
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const key = specialKeys[e.key] || e.key;
+        if (key.length === 1) {
+            // Regular character
+            ws.send(JSON.stringify({
+                command: 'type',
+                text: key
+            }));
+        } else {
+            // Special key
+            ws.send(JSON.stringify({
+                command: 'key',
+                key: key
             }));
         }
     }
