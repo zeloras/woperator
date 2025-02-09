@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Woperator - Remote Desktop</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .toolbar {
+            padding: 10px;
+            background-color: #2d2d2d;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .screen-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            background-color: #000;
+        }
+        #screen {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .status {
+            margin-left: auto;
+            padding: 5px 10px;
+            background-color: #333;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="toolbar">
+            <button id="connectBtn">Connect</button>
+            <button id="audioBtn">Enable Audio</button>
+            <button id="fullscreenBtn">Fullscreen</button>
+            <div class="status" id="status">Disconnected</div>
+        </div>
+        <div class="screen-container">
+            <div id="screen"></div>
+        </div>
+    </div>
+    <!-- noVNC core dependencies -->
+    <script type="module">
+        import RFB from "/static/js/libs/noVNC-1.5.0/core/rfb.js";
+        
+        let rfb = null;
+        let audioContext = null;
+        let connected = false;
+        
+        // Make RFB available globally
+        window.RFB = RFB;
+
+        // Connect to VNC server
+        document.getElementById('connectBtn').onclick = function() {
+            if (!connected) {
+                const wsUrl = `ws://${window.location.hostname}:6080`;
+                const screenElement = document.getElementById('screen');
+
+                // Create RFB object
+                rfb = new RFB(screenElement, wsUrl, {
+                    credentials: { password: 'vncpass' },
+                    wsProtocols: ['binary'],
+                    clipViewport: false,
+                    scaleViewport: true,
+                    resizeSession: true,
+                    qualityLevel: 6,
+                    compressionLevel: 2,
+                    showDotCursor: true,
+                    background: '#000000',
+                    viewOnly: false,
+                    focusOnClick: true,
+                    dragViewport: true,
+                    clipboardReceive: true,
+                    clipboardSend: true,
+                    scaleViewportMaxRatio: 1.0
+                });
+
+                rfb.addEventListener("connect", () => {
+                    connected = true;
+                    document.getElementById('status').textContent = 'Connected';
+                    document.getElementById('connectBtn').textContent = 'Disconnect';
+                });
+
+                rfb.addEventListener("disconnect", () => {
+                    connected = false;
+                    document.getElementById('status').textContent = 'Disconnected';
+                    document.getElementById('connectBtn').textContent = 'Connect';
+                });
+
+                rfb.addEventListener("credentialsrequired", () => {
+                    rfb.sendCredentials({ password: "vncpass" });
+                });
+            } else {
+                if (rfb) {
+                    rfb.disconnect();
+                    rfb = null;
+                }
+                connected = false;
+                document.getElementById('status').textContent = 'Disconnected';
+                document.getElementById('connectBtn').textContent = 'Connect';
+            }
+        };
+
+        // Enable audio streaming
+        document.getElementById('audioBtn').onclick = function() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                this.textContent = 'Disable Audio';
+                // Implementation of audio streaming would go here
+            } else {
+                audioContext.close();
+                audioContext = null;
+                this.textContent = 'Enable Audio';
+            }
+        };
+
+        // Fullscreen mode
+        document.getElementById('fullscreenBtn').onclick = function() {
+            const screen = document.getElementById('screen');
+            if (screen.requestFullscreen) {
+                screen.requestFullscreen();
+            } else if (screen.webkitRequestFullscreen) {
+                screen.webkitRequestFullscreen();
+            } else if (screen.msRequestFullscreen) {
+                screen.msRequestFullscreen();
+            }
+        };
+
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            if (rfb) {
+                const screenElement = document.getElementById('screen');
+                rfb.scaleViewport = true;
+                rfb.resizeSession = true;
+            }
+        });
+    </script>
+</body>
+</html> 

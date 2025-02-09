@@ -1,12 +1,49 @@
-version: '3'
+version: '3.8'
 
 services:
-  desktop:
-    build: .
-    platform: linux/x86_64
-    volumes:
-      - ./src:/app/src
-      - ./supervisor:/etc/supervisor/conf.d
+  woperator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    platform: linux/amd64
     ports:
-      - "8000:8000"
-    privileged: true 
+      - "5900:5900"  # VNC port
+      - "6080:6080"  # WebSocket port
+      - "6081:6081"  # Flask port
+    environment:
+      - DISPLAY=:0
+      - PULSE_SERVER=unix:/tmp/pulseaudio.socket
+      - PULSE_COOKIE=/tmp/pulseaudio.cookie
+      - PULSE_SINK=DummyOutput
+      - NO_IPV6=1
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - pulseaudio:/tmp/pulseaudio
+    tmpfs:
+      - /tmp
+      - /run
+    security_opt:
+      - seccomp:unconfined
+    privileged: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 5900 && nc -z localhost 6080 && nc -z localhost 6081"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 10s
+    network_mode: bridge
+    ipc: host
+    mac_address: host
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+
+volumes:
+  pulseaudio: 
